@@ -25,7 +25,7 @@
 
   <p align="center">
   <!-- UPDATE -->
-    <i>Project one liner slogan goes here</i>
+    <i>Blazingly fast 🚀, memory-safe 🚀, thread-safe 🚀, child-safe 🚀, pet-safe 🚀, food-grade 🚀, vegan 🚀 implementation of the <a href="https://github.com/metakgp/iitkgp-erp-login-pypi">iitkgp-erp-login-pypi</a> library.</i>
     <br />
     <a href="https://UPDATE.metakgp.org">Website</a>
     ·
