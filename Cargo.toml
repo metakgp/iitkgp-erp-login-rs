@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 reqwest = { version = "0.12.23", features = ["cookies", "json"] }
+rpassword = "7.4.0"
 scraper = "0.23.1"
 tokio = { version = "1.47.1", features = ["full"] }
 

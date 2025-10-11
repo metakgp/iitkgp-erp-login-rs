@@ -3,7 +3,10 @@ use reqwest::{
     header::{HeaderMap, USER_AGENT},
 };
 use scraper::{Html, Selector};
-use std::{collections::HashMap, error::Error};
+use std::{
+    collections::{HashMap, hash_map::Keys},
+    error::Error,
+};
 
 use crate::erp::{endpoints, responses};
 
@@ -149,10 +152,7 @@ impl Session {
     }
 
     /// Returns the form data for login requests
-    fn get_login_details(
-        &self,
-        requested_url: &str,
-    ) -> Result<Vec<(&'static str, String)>, Box<dyn Error>> {
+    fn get_login_details(&self) -> Result<Vec<(&'static str, String)>, Box<dyn Error>> {
         Ok(vec![
             (
                 "user_id",
@@ -177,7 +177,10 @@ impl Session {
             ),
             // No idea what this is
             ("typeee", "SI".into()),
-            ("email_otp", "".into()),
+            (
+                "email_otp",
+                self.email_otp.clone().unwrap_or("".into()).clone(),
+            ),
             (
                 "sessionToken",
                 self.session_token
@@ -185,7 +188,7 @@ impl Session {
                     .ok_or("Error: Session token not found.")?
                     .clone(),
             ),
-            ("requestedUrl", requested_url.into()),
+            ("requestedUrl", endpoints::HOMEPAGE_URL.into()),
         ])
     }
 
@@ -204,7 +207,7 @@ impl Session {
         self.password = password.into();
         self.answer = answer.into();
 
-        let login_details = self.get_login_details(endpoints::HOMEPAGE_URL)?;
+        let login_details = self.get_login_details()?;
 
         let resp = self
             .client
@@ -228,6 +231,27 @@ impl Session {
         } else {
             Err("Error: Response has no `msg` field.".into())
         }
+    }
+
+    /// Logs into ERP for the current session. Returns the ssoToken
+    pub async fn signin(&mut self, otp: String) -> Result<String, Box<dyn Error>> {
+        self.email_otp = Some(otp);
+        let login_details = self.get_login_details()?;
+
+        let resp = self
+            .client
+            .post(endpoints::LOGIN_URL)
+            .form(&login_details)
+            .headers(self.headers.clone())
+            .send()
+            .await?;
+
+        match resp.text().await?.as_str() {
+            responses::OTP_MISMATCH_ERROR => println!("OTP mismatch"),
+            _ => println!("YES"),
+        }
+
+        unimplemented!()
     }
 }
 
