@@ -29,5 +29,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let otp = rpassword::prompt_password("Enter OTP: ")?;
 
+    dbg!(session.signin(otp).await?);
+
     Ok(())
 }

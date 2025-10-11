@@ -22,6 +22,8 @@ pub struct Session {
     answer: Option<String>,
     /// Session token
     session_token: Option<String>,
+    /// SSO token
+    sso_token: Option<String>,
     /// The ERP url/path that is requested/will be redirected to.
     requested_url: Option<String>,
     /// OTP if required
@@ -72,6 +74,7 @@ impl Session {
             question: None,
             answer: None,
             session_token: None,
+            sso_token: None,
             requested_url: None,
             email_otp: None,
         }
@@ -246,12 +249,28 @@ impl Session {
             .send()
             .await?;
 
+        let final_url = resp.url().to_owned();
+
         match resp.text().await?.as_str() {
-            responses::OTP_MISMATCH_ERROR => println!("OTP mismatch"),
-            _ => println!("YES"),
+            responses::OTP_MISMATCH_ERROR => return Err(format!("OTP mismatch").into()),
+            _ => (),
         }
 
-        unimplemented!()
+        return if let Some(query) = final_url.query() {
+            let mut query_parts = query.split("=");
+            query_parts.next();
+
+            if let Some(sso_token) = query_parts.next() {
+                let sso_token = sso_token.to_string();
+                self.sso_token = Some(sso_token.clone());
+
+                Ok(sso_token)
+            } else {
+                Err(format!("Error parsing SSO token query.").into())
+            }
+        } else {
+            Err(format!("SSO token not found in URL.").into())
+        };
     }
 }
 
