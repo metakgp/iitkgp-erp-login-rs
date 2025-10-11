@@ -3,10 +3,7 @@ use reqwest::{
     header::{HeaderMap, USER_AGENT},
 };
 use scraper::{Html, Selector};
-use std::{
-    collections::{HashMap, hash_map::Keys},
-    error::Error,
-};
+use std::{collections::HashMap, error::Error};
 
 use crate::erp::{endpoints, responses};
 
@@ -251,26 +248,18 @@ impl Session {
 
         let final_url = resp.url().to_owned();
 
-        match resp.text().await?.as_str() {
-            responses::OTP_MISMATCH_ERROR => return Err(format!("OTP mismatch").into()),
-            _ => (),
+        if resp.text().await?.as_str() == responses::OTP_MISMATCH_ERROR {
+            return Err("OTP mismatch".into());
         }
 
-        return if let Some(query) = final_url.query() {
-            let mut query_parts = query.split("=");
-            query_parts.next();
+        if let Some(sso_token_pair) = final_url.query_pairs().find(|pair| pair.0 == "ssoToken") {
+            let sso_token = sso_token_pair.1.to_string();
+            self.sso_token = Some(sso_token.clone());
 
-            if let Some(sso_token) = query_parts.next() {
-                let sso_token = sso_token.to_string();
-                self.sso_token = Some(sso_token.clone());
-
-                Ok(sso_token)
-            } else {
-                Err(format!("Error parsing SSO token query.").into())
-            }
+            Ok(sso_token)
         } else {
-            Err(format!("SSO token not found in URL.").into())
-        };
+            Err("SSO token not found in URL.".into())
+        }
     }
 }
 
