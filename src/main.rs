@@ -5,7 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use iitkgp_erp_login::session::Session;
+use iitkgp_erp_login::session::{ErpCreds, Session};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -41,13 +41,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let password = rpassword::prompt_password("Enter password: ")?;
 
-    let mut session = Session::new(rollno.into(), password.into(), None);
+    let mut session = Session::new(
+        ErpCreds {
+            roll_number: rollno.into(),
+            password: password.into(),
+            security_questions_answers: None,
+        },
+        None,
+    );
     dbg!(session.get_session_token().await?);
 
     let secret_ques = session.get_secret_question(None).await?;
     let secret_ans = rpassword::prompt_password(format!("{secret_ques}: "))?;
 
-    dbg!(session.request_otp(None, secret_ans).await?);
+    dbg!(session.request_otp(None, Some(secret_ans)).await?);
 
     let otp = rpassword::prompt_password("Enter OTP: ")?;
 

@@ -4,6 +4,7 @@ use reqwest::{
 };
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex, RawCookie};
 use scraper::{Html, Selector};
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     path::{self, Path},
@@ -20,33 +21,31 @@ use crate::{
 pub struct Session {
     cookie_store: Arc<CookieStoreMutex>,
     client: Client,
-    /// Roll number
-    user_id: Option<String>,
-    /// ERP password
-    password: Option<String>,
+    credentials: ErpCreds,
     /// The security question for this session
     question: Option<String>,
-    /// Secret/security question's answer
+    /// Secret/security question's answer for this session
     answer: Option<String>,
+    /// OTP for this session
+    email_otp: Option<String>,
     /// Session token
     session_token: Option<String>,
     /// SSO token
     sso_token: Option<String>,
     /// The ERP url/path that is requested/will be redirected to.
     requested_url: Option<String>,
-    /// OTP if required
-    email_otp: Option<String>,
     /// Headers for the post requests
     headers: HeaderMap,
 }
 
-struct ErpCreds {
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErpCreds {
     /// Student Roll Number
-    roll_number: String,
+    pub roll_number: Option<String>,
     /// ERP Password
-    password: String,
+    pub password: Option<String>,
     /// Security Question
-    security_questions_answers: HashMap<String, String>,
+    pub security_questions_answers: Option<HashMap<String, String>>,
 }
 
 fn get_default_headers() -> HeaderMap {
@@ -66,11 +65,7 @@ fn get_default_headers() -> HeaderMap {
 }
 
 impl Session {
-    pub fn new(
-        user_id: Option<String>,
-        password: Option<String>,
-        headers: Option<HeaderMap>,
-    ) -> Session {
+    pub fn new(credentials: ErpCreds, headers: Option<HeaderMap>) -> Session {
         let cookie_store = CookieStoreMutex::new(CookieStore::new());
         let cookie_store = Arc::new(cookie_store);
 
@@ -81,8 +76,7 @@ impl Session {
                 .expect("Error building reqwest Client."),
             cookie_store,
             headers: headers.unwrap_or(get_default_headers()),
-            user_id,
-            password,
+            credentials,
             question: None,
             answer: None,
             session_token: None,
@@ -137,21 +131,22 @@ impl Session {
 
     /// Fetches the secret question given the rollnumber. If the rollnumber is set in the session struct, it is used instead.
     pub async fn get_secret_question(&mut self, roll_number: Option<String>) -> Res<String> {
-        let roll_number = roll_number.unwrap_or(
-            self.user_id
-                .as_ref()
-                .expect("Error: Roll number not found.")
-                .clone(),
-        );
-        self.user_id = roll_number.clone().into();
+        let roll_number = if let Some(roll_number) = &self.credentials.roll_number {
+            roll_number.clone()
+        } else {
+            let roll_number = roll_number.ok_or("Error: No roll number found.")?;
+            self.credentials.roll_number = roll_number.clone().into();
 
-        let mut map = HashMap::new();
-        map.insert("user_id", roll_number);
+            roll_number
+        };
+
+        let mut form_data = HashMap::new();
+        form_data.insert("user_id", roll_number);
 
         let resp = self
             .client
             .post(endpoints::SECRET_QUESTION_URL)
-            .form(&map)
+            .form(&form_data)
             .headers(self.headers.clone())
             .send()
             .await?
@@ -159,7 +154,7 @@ impl Session {
             .await?;
 
         if resp == responses::SECRET_QUES_ROLLNO_INVALID {
-            Err(String::from("Error: Invalid roll number.").into())
+            Err("Error: Invalid roll number.".into())
         } else {
             self.question = resp.clone().into();
 
@@ -167,57 +162,37 @@ impl Session {
         }
     }
 
-    /// Returns the form data for login requests
-    fn get_login_details(&self) -> Res<Vec<(&'static str, String)>> {
-        Ok(vec![
-            (
-                "user_id",
-                self.user_id
-                    .as_ref()
-                    .ok_or("Error: Roll number not found.")?
-                    .clone(),
-            ),
-            (
-                "password",
-                self.password
-                    .as_ref()
-                    .ok_or("Error: Password not found.")?
-                    .clone(),
-            ),
-            (
-                "answer",
-                self.answer
-                    .as_ref()
-                    .ok_or("Error: Secret question answer not found.")?
-                    .clone(),
-            ),
-            // No idea what this is
-            ("typeee", "SI".into()),
-            (
-                "email_otp",
-                self.email_otp.clone().unwrap_or("".into()).clone(),
-            ),
-            (
-                "sessionToken",
-                self.session_token
-                    .as_ref()
-                    .ok_or("Error: Session token not found.")?
-                    .clone(),
-            ),
-            ("requestedUrl", endpoints::HOMEPAGE_URL.into()),
-        ])
-    }
-
     /// Requests ERP to send an OTP.
-    pub async fn request_otp(&mut self, password: Option<String>, answer: String) -> Res<()> {
-        let password = password.unwrap_or(
-            self.password
+    pub async fn request_otp(
+        &mut self,
+        password: Option<String>,
+        answer: Option<String>,
+    ) -> Res<()> {
+        if self.credentials.password.is_none() {
+            let password = password.ok_or("Error: Password not found.")?;
+            self.credentials.password = password.clone().into();
+        }
+
+        if let Some(answer) = answer {
+            self.answer = answer.clone().into();
+        } else {
+            let answer_map = self
+                .credentials
+                .security_questions_answers
                 .as_ref()
-                .expect("Error: Password not found.")
-                .clone(),
-        );
-        self.password = password.into();
-        self.answer = answer.into();
+                .ok_or("Error: No security question answers found.")?;
+
+            let question = self
+                .question
+                .as_ref()
+                .ok_or("Error: Security question for this session not found.")?;
+
+            self.answer = answer_map
+                .get(question)
+                .ok_or("Error: Answer to the security question not found.")?
+                .to_owned()
+                .into();
+        }
 
         let login_details = self.get_login_details()?;
 
@@ -321,10 +296,60 @@ impl Session {
 
         Ok(())
     }
+
+    /// Returns the form data for login requests
+    fn get_login_details(&self) -> Res<Vec<(&'static str, String)>> {
+        let user_id = self
+            .credentials
+            .roll_number
+            .as_ref()
+            .ok_or("Error: Roll number not found.")?
+            .clone();
+
+        let password = self
+            .credentials
+            .password
+            .as_ref()
+            .ok_or("Error: Password not found.")?
+            .clone();
+
+        let answer = self
+            .answer
+            .as_ref()
+            .ok_or("Error: Secret question answer not found.")?
+            .clone();
+
+        let session_token = self
+            .session_token
+            .as_ref()
+            .ok_or("Error: Session token not found.")?
+            .clone();
+
+        Ok(vec![
+            ("user_id", user_id),
+            ("password", password),
+            ("answer", answer),
+            // No idea what this is
+            ("typeee", "SI".into()),
+            (
+                "email_otp",
+                self.email_otp.clone().unwrap_or("".into()).clone(),
+            ),
+            ("sessionToken", session_token),
+            ("requestedUrl", endpoints::HOMEPAGE_URL.into()),
+        ])
+    }
 }
 
 impl Default for Session {
     fn default() -> Self {
-        Self::new(None, None, None)
+        Self::new(
+            ErpCreds {
+                roll_number: None,
+                password: None,
+                security_questions_answers: None,
+            },
+            None,
+        )
     }
 }
