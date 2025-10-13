@@ -1,13 +1,24 @@
 use reqwest::{
-    Client,
+    Client, Url,
     header::{HeaderMap, USER_AGENT},
 };
+use reqwest_cookie_store::{CookieStore, CookieStoreMutex, RawCookie};
 use scraper::{Html, Selector};
-use std::{collections::HashMap, error::Error};
+use std::{
+    collections::HashMap,
+    path::{self, Path},
+    str::FromStr,
+    sync::Arc,
+};
 
-use crate::erp::{endpoints, responses};
+use crate::utils::{Res, read_session_file};
+use crate::{
+    erp::{endpoints, responses},
+    utils::save_session_file,
+};
 
 pub struct Session {
+    cookie_store: Arc<CookieStoreMutex>,
     client: Client,
     /// Roll number
     user_id: Option<String>,
@@ -38,8 +49,6 @@ struct ErpCreds {
     security_questions_answers: HashMap<String, String>,
 }
 
-type Res<T> = Result<T, Box<dyn Error>>;
-
 fn get_default_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -62,11 +71,15 @@ impl Session {
         password: Option<String>,
         headers: Option<HeaderMap>,
     ) -> Session {
+        let cookie_store = CookieStoreMutex::new(CookieStore::new());
+        let cookie_store = Arc::new(cookie_store);
+
         Session {
             client: Client::builder()
-                .cookie_store(true)
+                .cookie_provider(cookie_store.clone())
                 .build()
                 .expect("Error building reqwest Client."),
+            cookie_store,
             headers: headers.unwrap_or(get_default_headers()),
             user_id,
             password,
@@ -91,7 +104,11 @@ impl Session {
     }
 
     /// Fetches the session token
-    pub async fn get_sessiontoken(&mut self) -> Res<String> {
+    pub async fn get_session_token(&mut self) -> Res<String> {
+        if let Some(session_token) = &self.session_token {
+            return Ok(session_token.to_owned());
+        }
+
         let homepage = self
             .client
             .get(endpoints::HOMEPAGE_URL)
@@ -268,6 +285,41 @@ impl Session {
         } else {
             Err("Error: Session not logged in.".into())
         }
+    }
+
+    /// Saves the session on a file
+    pub async fn save_session<P: AsRef<Path>>(&self, file_path: P) -> Res<()> {
+        let file_path = path::absolute(file_path)?;
+
+        save_session_file(
+            file_path,
+            self.session_token.as_deref(),
+            self.sso_token.as_deref(),
+        )
+        .await
+    }
+
+    /// Loads a session from a saved session file. This only loads the session token and sso token (if they exist), not the credentials.
+    pub async fn read_session<P: AsRef<Path>>(&mut self, file_path: P) -> Res<()> {
+        let file_path = path::absolute(file_path)?;
+
+        let (session_token, sso_token) = read_session_file(file_path).await?;
+        self.session_token = session_token;
+        self.sso_token = sso_token;
+
+        if let Some(sso_token) = &self.sso_token {
+            let mut store = self
+                .cookie_store
+                .lock()
+                .map_err(|_| "Error getting cookie store.".to_string())?;
+
+            store.clear();
+
+            let sso_token_cookie = RawCookie::new("ssoToken", sso_token);
+            store.insert_raw(&sso_token_cookie, &Url::from_str(endpoints::BASE_URL)?)?;
+        }
+
+        Ok(())
     }
 }
 

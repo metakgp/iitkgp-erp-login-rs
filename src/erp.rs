@@ -1,4 +1,5 @@
 pub mod endpoints {
+    pub const BASE_URL: &str = r"https://erp.iitkgp.ac.in";
     pub const HOMEPAGE_URL: &str = r"https://erp.iitkgp.ac.in/IIT_ERP3/";
     pub const WELCOMEPAGE_URL: &str = r"https://erp.iitkgp.ac.in/IIT_ERP3/welcome.jsp"; // Only accessible when NOT logged in
     pub const LOGIN_URL: &str = "https://erp.iitkgp.ac.in/SSOAdministration/auth.htm";

@@ -1,12 +1,34 @@
 use std::{
     error::Error,
     io::{self, Write},
+    path,
+    str::FromStr,
 };
 
 use iitkgp_erp_login::session::Session;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let session_file_path = path::PathBuf::from_str(".session")?;
+
+    if session_file_path.exists() {
+        println!(
+            "Found session file {}. Checking session.",
+            session_file_path.display()
+        );
+
+        let mut session = Session::default();
+        session.read_session(&session_file_path).await?;
+
+        let is_alive = session.is_alive().await?;
+        println!("Session alive: {}", session.is_alive().await?);
+
+        if is_alive {
+            open::that(session.get_login_url(None)?)?;
+            return Ok(());
+        }
+    }
+
     let mut rollno = String::new();
 
     let stdin = io::stdin();
@@ -20,7 +42,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let password = rpassword::prompt_password("Enter password: ")?;
 
     let mut session = Session::new(rollno.into(), password.into(), None);
-    dbg!(session.get_sessiontoken().await?);
+    dbg!(session.get_session_token().await?);
 
     let secret_ques = session.get_secret_question(None).await?;
     let secret_ans = rpassword::prompt_password(format!("{secret_ques}: "))?;
@@ -31,6 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     dbg!(session.signin(otp).await?);
 
+    session.save_session(session_file_path).await?;
     open::that(session.get_login_url(None)?)?;
 
     Ok(())
