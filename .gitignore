@@ -15,5 +15,6 @@ node-modules/
 
 #/target
 
-# Session file
+# Session and credential files
 .session
+erpcreds.json

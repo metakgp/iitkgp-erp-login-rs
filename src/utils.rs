@@ -1,7 +1,12 @@
-use std::{error::Error, path::PathBuf};
+use std::{
+    collections::HashMap,
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 use tokio::fs;
 
+use serde::{Deserialize, Serialize};
 pub type Res<T> = Result<T, Box<dyn Error>>;
 
 /// Saves the session token and SSO token on a file
@@ -32,4 +37,28 @@ pub async fn read_session_file(file_path: PathBuf) -> Res<(Option<String>, Optio
         lines.next().map(str::to_string),
         lines.next().map(str::to_string),
     ))
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+/// Used to store ERP credentials in a file (typically erpcreds.json)
+pub struct ErpCreds {
+    /// Student Roll Number
+    pub roll_number: Option<String>,
+    /// ERP Password
+    pub password: Option<String>,
+    /// Security Question
+    pub answer_map: Option<HashMap<String, String>>,
+}
+
+impl ErpCreds {
+    pub fn from_file<P: AsRef<Path>>(file_path: P) -> Res<Self> {
+        let file_reader = std::fs::File::open(file_path)?;
+
+        Ok(serde_json::from_reader(file_reader)?)
+    }
+
+    pub fn save_to_file<P: AsRef<Path>>(&self, file_path: P) -> Res<()> {
+        let file_writer = std::fs::File::create(file_path)?;
+        Ok(serde_json::to_writer(file_writer, self)?)
+    }
 }

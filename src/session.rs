@@ -4,7 +4,6 @@ use reqwest::{
 };
 use reqwest_cookie_store::{CookieStore, CookieStoreMutex, RawCookie};
 use scraper::{Html, Selector};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     path::{self, Path},
@@ -12,11 +11,8 @@ use std::{
     sync::Arc,
 };
 
-use crate::utils::{Res, read_session_file};
-use crate::{
-    erp::{endpoints, responses},
-    utils::save_session_file,
-};
+use crate::erp::{endpoints, responses};
+use crate::utils::{ErpCreds, Res, read_session_file, save_session_file};
 
 pub struct Session {
     cookie_store: Arc<CookieStoreMutex>,
@@ -32,20 +28,8 @@ pub struct Session {
     session_token: Option<String>,
     /// SSO token
     sso_token: Option<String>,
-    /// The ERP url/path that is requested/will be redirected to.
-    requested_url: Option<String>,
     /// Headers for the post requests
     headers: HeaderMap,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct ErpCreds {
-    /// Student Roll Number
-    pub roll_number: Option<String>,
-    /// ERP Password
-    pub password: Option<String>,
-    /// Security Question
-    pub security_questions_answers: Option<HashMap<String, String>>,
 }
 
 fn get_default_headers() -> HeaderMap {
@@ -81,7 +65,6 @@ impl Session {
             answer: None,
             session_token: None,
             sso_token: None,
-            requested_url: None,
             email_otp: None,
         }
     }
@@ -178,7 +161,7 @@ impl Session {
         } else {
             let answer_map = self
                 .credentials
-                .security_questions_answers
+                .answer_map
                 .as_ref()
                 .ok_or("Error: No security question answers found.")?;
 
@@ -347,7 +330,7 @@ impl Default for Session {
             ErpCreds {
                 roll_number: None,
                 password: None,
-                security_questions_answers: None,
+                answer_map: None,
             },
             None,
         )
