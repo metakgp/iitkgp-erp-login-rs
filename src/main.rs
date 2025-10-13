@@ -31,5 +31,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     dbg!(session.signin(otp).await?);
 
+    open::that(session.get_login_url(None)?)?;
+
     Ok(())
 }

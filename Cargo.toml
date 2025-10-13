@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+open = "5.3.2"
 reqwest = { version = "0.12.23", features = ["cookies", "json"] }
 rpassword = "7.4.0"
 scraper = "0.23.1"

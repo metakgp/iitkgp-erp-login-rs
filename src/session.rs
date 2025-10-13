@@ -38,6 +38,8 @@ struct ErpCreds {
     security_questions_answers: HashMap<String, String>,
 }
 
+type Res<T> = Result<T, Box<dyn Error>>;
+
 fn get_default_headers() -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -78,7 +80,7 @@ impl Session {
     }
 
     /// Checks if the session is alive
-    pub async fn is_alive(&self) -> Result<bool, Box<dyn Error>> {
+    pub async fn is_alive(&self) -> Res<bool> {
         let resp = self.client.get(endpoints::WELCOMEPAGE_URL).send().await?;
 
         if let Some(len) = resp.content_length() {
@@ -89,7 +91,7 @@ impl Session {
     }
 
     /// Fetches the session token
-    pub async fn get_sessiontoken(&mut self) -> Result<String, Box<dyn Error>> {
+    pub async fn get_sessiontoken(&mut self) -> Res<String> {
         let homepage = self
             .client
             .get(endpoints::HOMEPAGE_URL)
@@ -117,10 +119,7 @@ impl Session {
     }
 
     /// Fetches the secret question given the rollnumber. If the rollnumber is set in the session struct, it is used instead.
-    pub async fn get_secret_question(
-        &mut self,
-        roll_number: Option<String>,
-    ) -> Result<String, Box<dyn Error>> {
+    pub async fn get_secret_question(&mut self, roll_number: Option<String>) -> Res<String> {
         let roll_number = roll_number.unwrap_or(
             self.user_id
                 .as_ref()
@@ -152,7 +151,7 @@ impl Session {
     }
 
     /// Returns the form data for login requests
-    fn get_login_details(&self) -> Result<Vec<(&'static str, String)>, Box<dyn Error>> {
+    fn get_login_details(&self) -> Res<Vec<(&'static str, String)>> {
         Ok(vec![
             (
                 "user_id",
@@ -193,11 +192,7 @@ impl Session {
     }
 
     /// Requests ERP to send an OTP.
-    pub async fn request_otp(
-        &mut self,
-        password: Option<String>,
-        answer: String,
-    ) -> Result<(), Box<dyn Error>> {
+    pub async fn request_otp(&mut self, password: Option<String>, answer: String) -> Res<()> {
         let password = password.unwrap_or(
             self.password
                 .as_ref()
@@ -234,7 +229,7 @@ impl Session {
     }
 
     /// Logs into ERP for the current session. Returns the ssoToken
-    pub async fn signin(&mut self, otp: String) -> Result<String, Box<dyn Error>> {
+    pub async fn signin(&mut self, otp: String) -> Res<String> {
         self.email_otp = Some(otp);
         let login_details = self.get_login_details()?;
 
@@ -259,6 +254,19 @@ impl Session {
             Ok(sso_token)
         } else {
             Err("SSO token not found in URL.".into())
+        }
+    }
+
+    /// Returns a link to log into ERP with credentials
+    /// Opens the homepage by default
+    pub fn get_login_url(&self, url: Option<&str>) -> Res<String> {
+        if let Some(sso_token) = &self.sso_token {
+            Ok(format!(
+                "{}?ssoToken={sso_token}",
+                url.unwrap_or(endpoints::HOMEPAGE_URL)
+            ))
+        } else {
+            Err("Error: Session not logged in.".into())
         }
     }
 }
