@@ -5,10 +5,7 @@ use std::{
     str::FromStr,
 };
 
-use iitkgp_erp_login::{
-    ErpCreds, Session,
-    gmail::{GmailAPIObserver, OTPRetriever},
-};
+use iitkgp_erp_login::{ErpCreds, Session, gmail::GmailAPIObserver, otp::OTPRetriever};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

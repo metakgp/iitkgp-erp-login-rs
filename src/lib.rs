@@ -1,5 +1,6 @@
 pub mod erp;
 pub mod gmail;
+pub mod otp;
 mod session;
 mod utils;
 

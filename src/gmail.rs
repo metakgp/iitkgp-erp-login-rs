@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use google_gmail1::{
     Gmail,
     api::Scope,
@@ -7,9 +5,12 @@ use google_gmail1::{
     hyper_util::{self, client::legacy::connect::HttpConnector},
     yup_oauth2::{self, InstalledFlowAuthenticator, InstalledFlowReturnMethod},
 };
-use tokio::time::sleep;
 
-use crate::utils::Res;
+use crate::{
+    erp,
+    otp::{OTPRetriever, get_otp_from_sub},
+    utils::Res,
+};
 
 pub struct GmailAPIObserver {
     client: Gmail<HttpsConnector<HttpConnector>>,
@@ -42,36 +43,18 @@ impl GmailAPIObserver {
     }
 }
 
-pub trait OTPRetriever {
-    fn get_otp(&self, after_timestamp: i64) -> impl Future<Output = Res<Option<String>>>;
-    fn wait_for_otp(
-        &self,
-        after_timestamp: i64,
-        tries: usize,
-    ) -> impl Future<Output = Res<Option<String>>> {
-        async move {
-            for i in 0..tries {
-                let sleep_duration = 5 * (1 << i);
-                println!("Checking OTP after {sleep_duration}s.");
-                sleep(Duration::from_secs(sleep_duration)).await;
-
-                if let Some(otp) = self.get_otp(after_timestamp).await? {
-                    return Ok(Some(otp));
-                }
-            }
-
-            Ok(None)
-        }
-    }
-}
-
 impl OTPRetriever for GmailAPIObserver {
     async fn get_otp(&self, after_timestamp: i64) -> Res<Option<String>> {
         let (_, msgs) = self
             .client
             .users()
             .messages_list("me")
-            .q("from:erpkgp@adm.iitkgp.ac.in subject:\"OTP for Sign In in ERP Portal\"")
+            .q(format!(
+                "from:{} subject:\"{}\"",
+                erp::email::ERP_EMAIL,
+                erp::email::ERP_OTP_SUBJECT_PREFIX
+            )
+            .as_ref())
             .add_scope(Scope::Readonly)
             .max_results(1)
             .doit()
@@ -119,12 +102,10 @@ impl OTPRetriever for GmailAPIObserver {
                         .as_ref()
                         .ok_or("Error: Subject header has no value.")?;
 
-                    let otp = subject
-                        .split_whitespace()
-                        .find(|str| str.len() == 6 && str.parse::<usize>().is_ok())
-                        .ok_or("Error: OTP string not found in the OTP.")?;
+                    let otp =
+                        get_otp_from_sub(subject).ok_or("Error: No OTP found in the subject.")?;
 
-                    Ok(Some(otp.to_owned()))
+                    Ok(Some(otp))
                 }
             } else {
                 Ok(None)

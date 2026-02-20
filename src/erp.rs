@@ -16,3 +16,8 @@ pub(crate) mod responses {
     pub const OTP_SENT_MESSAGE: &str = "An OTP(valid for a short time) has been sent to your email id registered with ERP, IIT Kharagpur. Please use that OTP for further processing. ";
     pub const OTP_MISMATCH_ERROR: &str = "ERROR:Email OTP mismatch";
 }
+
+pub(crate) mod email {
+    pub const ERP_EMAIL: &str = "erpkgp@adm.iitkgp.ac.in";
+    pub const ERP_OTP_SUBJECT_PREFIX: &str = "OTP for Sign In in ERP Portal";
+}
