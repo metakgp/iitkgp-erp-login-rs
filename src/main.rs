@@ -5,10 +5,15 @@ use std::{
     str::FromStr,
 };
 
-use iitkgp_erp_login::{ErpCreds, Session};
+use iitkgp_erp_login::{
+    ErpCreds, Session,
+    gmail::{GmailAPIObserver, OTPRetriever},
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    let hub = GmailAPIObserver::new().await?;
+
     let session_file_path = path::PathBuf::from_str(".session")?;
     let creds_file_path = path::PathBuf::from_str("erpcreds.json")?;
 
@@ -67,9 +72,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         None
     };
 
-    dbg!(session.request_otp(None, secret_ans).await?);
+    let after_timestamp = session.request_otp(None, secret_ans).await?;
 
-    let otp = rpassword::prompt_password("Enter OTP: ")?;
+    let otp = hub.wait_for_otp(after_timestamp, 5).await?;
+    let otp = if let Some(otp) = otp {
+        println!("Obtained OTP from the email.");
+        otp
+    } else {
+        rpassword::prompt_password("Email OTP could not be retrieved. Enter manually: ")?
+    };
 
     dbg!(session.signin(otp).await?);
 

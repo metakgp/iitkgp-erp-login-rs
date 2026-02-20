@@ -150,7 +150,7 @@ impl Session {
         &mut self,
         password: Option<String>,
         answer: Option<String>,
-    ) -> Res<()> {
+    ) -> Res<i64> {
         if self.credentials.password.is_none() {
             let password = password.ok_or("Error: Password not found.")?;
             self.credentials.password = password.clone().into();
@@ -186,6 +186,7 @@ impl Session {
             .headers(self.headers.clone())
             .build()?;
 
+        let after_timestamp = chrono::Local::now().timestamp();
         let resp = self.client.execute(resp).await?;
         let resp: HashMap<String, String> = resp.json().await?;
 
@@ -195,7 +196,7 @@ impl Session {
                     Err("Incorrect security question answer.".into())
                 }
                 responses::PASSWORD_MISMATCH_ERROR => Err("Incorrect password.".into()),
-                responses::OTP_SENT_MESSAGE => Ok(()),
+                responses::OTP_SENT_MESSAGE => Ok(after_timestamp),
                 _ => Err(format!("Error requesting OTP: {msg}").into()),
             }
         } else {
